@@ -1,6 +1,6 @@
 import os
 import sys
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 from datetime import date
 from supabase import create_client
@@ -17,8 +17,6 @@ def parse_fecha(texto_fecha: str, fecha_captura: date):
         dia, mes = int(dia), int(mes)
         anio = fecha_captura.year
         fecha = date(anio, mes, dia)
-        # Si la fecha resulta muy anterior, asumimos que es del próximo año
-        # (caso: capturamos en diciembre y la tabla muestra enero)
         if (fecha_captura - fecha).days > 180:
             fecha = date(anio + 1, mes, dia)
         return fecha
@@ -26,7 +24,7 @@ def parse_fecha(texto_fecha: str, fecha_captura: date):
         return None
 
 
-def es_fila_encabezado(celdas: list[str]) -> bool:
+def es_fila_encabezado(celdas):
     """Detecta la fila Date|Weekday|Min|Max|Rate (puede venir en <th> o <td>)."""
     if len(celdas) < 5:
         return False
@@ -36,13 +34,15 @@ def es_fila_encabezado(celdas: list[str]) -> bool:
 
 
 def scrape_30rates():
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-        )
-    }
-    response = requests.get(URL_30RATES, headers=headers, timeout=30)
+    # cloudscraper se hace pasar por un navegador real
+    scraper = cloudscraper.create_scraper(
+        browser={
+            "browser": "chrome",
+            "platform": "windows",
+            "desktop": True,
+        }
+    )
+    response = scraper.get(URL_30RATES, timeout=30)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -54,20 +54,17 @@ def scrape_30rates():
         if len(filas) < 2:
             continue
 
-        # Extraer texto de la primera fila para identificar si es la tabla diaria
         primera_fila_celdas = [
             c.get_text(strip=True) for c in filas[0].find_all(["td", "th"])
         ]
         if not es_fila_encabezado(primera_fila_celdas):
             continue
 
-        # Procesar las filas de datos (saltando la fila de encabezado)
         for fila in filas[1:]:
             celdas = [c.get_text(strip=True) for c in fila.find_all(["td", "th"])]
             if len(celdas) < 5:
                 continue
 
-            # Validar que la primera celda parezca una fecha DD/MM
             if "/" not in celdas[0]:
                 continue
 
@@ -94,7 +91,7 @@ def scrape_30rates():
                 "tipo": tipo,
             })
 
-    # Deduplicar por (fecha_captura, fecha_pronostico)
+    # Deduplicar
     vistos = set()
     unicos = []
     for r in registros:
