@@ -26,6 +26,15 @@ def parse_fecha(texto_fecha: str, fecha_captura: date):
         return None
 
 
+def es_fila_encabezado(celdas: list[str]) -> bool:
+    """Detecta la fila Date|Weekday|Min|Max|Rate (puede venir en <th> o <td>)."""
+    if len(celdas) < 5:
+        return False
+    esperados = {"date", "weekday", "min", "max", "rate"}
+    valores = {c.strip().lower() for c in celdas[:5]}
+    return esperados.issubset(valores)
+
+
 def scrape_30rates():
     headers = {
         "User-Agent": (
@@ -39,16 +48,27 @@ def scrape_30rates():
 
     fecha_captura = date.today()
     registros = []
-    columnas_esperadas = {"Date", "Weekday", "Min", "Max", "Rate"}
 
     for tabla in soup.find_all("table"):
-        encabezados = {th.get_text(strip=True) for th in tabla.find_all("th")}
-        if not columnas_esperadas.issubset(encabezados):
+        filas = tabla.find_all("tr")
+        if len(filas) < 2:
             continue
 
-        for fila in tabla.find_all("tr")[1:]:
-            celdas = [td.get_text(strip=True) for td in fila.find_all("td")]
+        # Extraer texto de la primera fila para identificar si es la tabla diaria
+        primera_fila_celdas = [
+            c.get_text(strip=True) for c in filas[0].find_all(["td", "th"])
+        ]
+        if not es_fila_encabezado(primera_fila_celdas):
+            continue
+
+        # Procesar las filas de datos (saltando la fila de encabezado)
+        for fila in filas[1:]:
+            celdas = [c.get_text(strip=True) for c in fila.find_all(["td", "th"])]
             if len(celdas) < 5:
+                continue
+
+            # Validar que la primera celda parezca una fecha DD/MM
+            if "/" not in celdas[0]:
                 continue
 
             fecha_pron = parse_fecha(celdas[0], fecha_captura)
