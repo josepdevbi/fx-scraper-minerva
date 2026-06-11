@@ -74,15 +74,16 @@ def scrape_trm():
         current_rate = int(float(group.replace(",", "")))
         print(f"TRM actual: {current_rate}")
 
-    records.append({
-        "fecha_captura":    today_str,
-        "fecha_pronostico": today_str,
-        "dia_semana":       date.today().strftime("%A"),
-        "min_cop":          current_rate,
-        "max_cop":          current_rate,
-        "rate_cop":         current_rate,
-        "tipo":             "actual",
-    })
+    # Registro de la tasa actual del día → tipo 'historico'
+records.append({
+    "fecha_captura":    today_str,
+    "fecha_pronostico": today_str,
+    "dia_semana":       date.today().strftime("%A"),
+    "min_cop":          current_rate,
+    "max_cop":          current_rate,
+    "rate_cop":         current_rate,
+    "tipo":             "historico",   # ← era "actual", corregido
+})
 
     # ── Pronósticos de la tabla ───────────────────────────────────────────────
     for table in soup.find_all("table"):
