@@ -26,26 +26,24 @@ def scrape_trm():
     html = resp.text
 
     # DEBUG: imprimir fragmento del HTML para diagnóstico
-    idx = html.lower().find("exchange rate")
+    idx = html.lower().find("exchange rate equals")
     if idx >= 0:
         print(f"[DEBUG] Fragmento HTML: {repr(html[idx:idx+200])}")
     else:
-        print(f"[DEBUG] 'exchange rate' NO encontrado. Primeros 500 chars:")
-        print(repr(html[:500]))
+        print("[DEBUG] 'exchange rate equals' NO encontrado en el HTML.")
 
     soup = BeautifulSoup(html, "html.parser")
     today_str    = date.today().isoformat()
     current_year = date.today().year
     records      = []
 
-    # ── Estrategia 1: texto plano (sin tags HTML intermedios) ─────────────────
-    # "exchange rate equals 3547.86 Colombian"
+    # ── Estrategia 1: regex sobre HTML crudo ──────────────────────────────────
     m = re.search(
         r"exchange rate equals\s+[\*\s]*([\d,]+\.?\d*)[\*\s]*\s+Colombian",
         html, re.IGNORECASE,
     )
 
-    # ── Estrategia 2: BeautifulSoup — buscar <strong> dentro del párrafo ──────
+    # ── Estrategia 2: BeautifulSoup — texto limpio de cada tag ────────────────
     if not m:
         for tag in soup.find_all(["p", "div", "span", "h2", "h3"]):
             text = tag.get_text(" ", strip=True)
@@ -54,14 +52,14 @@ def scrape_trm():
                 m = m2
                 break
 
-    # ── Estrategia 3: cualquier número 4-digit en el bloque TODAY ─────────────
+    # ── Estrategia 3: primer número 4-5 dígitos en el bloque TODAY ────────────
     if not m:
         m = re.search(
             r"USD TO COP TODAY.*?(\d{4,5}(?:\.\d{1,2})?)",
             html, re.IGNORECASE | re.DOTALL,
         )
 
-    # ── Fallback: frankfurter API (EUR base, calculamos COP) ─────────────────
+    # ── Fallback: frankfurter API ─────────────────────────────────────────────
     if not m:
         print("WARNING: No se encontró TRM en 30rates. Usando fallback frankfurter.app")
         fb = requests.get(
@@ -70,20 +68,19 @@ def scrape_trm():
         current_rate = int(float(fb["rates"]["COP"]))
         print(f"TRM fallback (frankfurter): {current_rate}")
     else:
-        group = m.group(1) if hasattr(m, "group") else m.group(1)
-        current_rate = int(float(group.replace(",", "")))
+        current_rate = int(float(m.group(1).replace(",", "")))
         print(f"TRM actual: {current_rate}")
 
-    # Registro de la tasa actual del día → tipo 'historico'
-records.append({
-    "fecha_captura":    today_str,
-    "fecha_pronostico": today_str,
-    "dia_semana":       date.today().strftime("%A"),
-    "min_cop":          current_rate,
-    "max_cop":          current_rate,
-    "rate_cop":         current_rate,
-    "tipo":             "historico",   # ← era "actual", corregido
-})
+    # ── Registro de la tasa actual del día ────────────────────────────────────
+    records.append({
+        "fecha_captura":    today_str,
+        "fecha_pronostico": today_str,
+        "dia_semana":       date.today().strftime("%A"),
+        "min_cop":          current_rate,
+        "max_cop":          current_rate,
+        "rate_cop":         current_rate,
+        "tipo":             "historico",
+    })
 
     # ── Pronósticos de la tabla ───────────────────────────────────────────────
     for table in soup.find_all("table"):
@@ -107,7 +104,7 @@ records.append({
             except Exception:
                 continue
 
-    print(f"Total registros: {len(records)} (1 actual + {len(records)-1} pronósticos)")
+    print(f"Total registros: {len(records)} (1 historico + {len(records)-1} pronósticos)")
     return records
 
 
